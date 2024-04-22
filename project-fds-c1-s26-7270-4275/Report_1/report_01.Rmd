@@ -32,6 +32,7 @@ library(tidygeocoder)
 library(ggmap)
 library(leaflet)
 library(knitr)
+library(magrittr)
 ```
 
 # Introduction
@@ -42,35 +43,35 @@ This is the first report of a series of four reports. The goal of each report is
 3. Exploring the data
 4. Analysing the data
 5. Display any discovery in meaningful reports
-6. Write a comprehensive report about
+6. Write a comprehensive report about the findings
 
 In this report, we will take the data from a fake Real Estate website.
-Then, we will explore it, putting an emphasis on some difficulties inherent of these datasets.
+Then, we will explore it, putting an emphasis on some difficulties inherent of these kind of datasets.
 Finally, we will display it on a map.
 This report should be a good beginning to explore Real Estate data from a real dataset, in a real situation.
 
 # The data
 
-The first step was to actually browse the website to understand how it worls.
+The first step was to actually browse the website to understand how it works.
 
 Below, a screenshot of the webiste:
 <center>
 ![UI sample from https://epfl-exts.github.io/rental-scrape/](UI_rental_site.png){width=95%}
 </center>
 
-While browsing the website, we see that the data is shown is a table view. The UI represents each item in a small cell of a bigger table.The entire data is in a unique page, which means there is no need to go to page 2 and more.
+While browsing the website, we see that the data is shown is a table view. The UI represents each item in a small cell of a bigger table.The entire data is in a unique page, which means there is no need to go to navigate more than this page.   
 The data provided for the UI is the following:
 
 * Type of item.
 * Number of rooms
 * Price
 * Address
-* Superficy
+* area
 * Floor
 * Usable surface
 * Availability time
 
-But if we want to scrap this data, we cannot just copy-paste from the UI, we need to get the data from the source code directly. If we inspect the website code, we can see that there is no table, only <div> tags put altogether.
+But if we want to scrap this data, we cannot just copy-paste from the UI, we need to get the data from the source code directly. If we inspect the website code, we can see that there is no table, only `<div>` tags put altogether.
 ``` {eval=False}
 <div class="col-sm">
 	<div class="bg-sec-color">
@@ -107,9 +108,10 @@ But if we want to scrap this data, we cannot just copy-paste from the UI, we nee
 	...
 </div>
 ```
-
-Let's first scrap the data and make a table with that.
-```{r echo=FALSE,}
+Let's scrap the data and create a tibble with it.
+Below, the code used to scrap the data is hidden to have a better comprehension of the report.
+We only show a glimpse of the table to have a better snapshot of the data.
+```{r}
 # Read HTML page
 rental_website <- read_html("https://epfl-exts.github.io/rental-scrape/")
 # Create a list of all items.
@@ -179,15 +181,17 @@ appartments_df <- dplyr::bind_cols(
 glimpse(appartments_df)
 ```
 We do have the 612 rows and 9 columns as expected by the sample data.
-But, if we compare both, we see we have some with the data not displayed exactly like in the sample.
+But, if we compare both, we see we have some with the data is not displayed exactly like the one in the sample.
 
 ```{r message=FALSE, warning=FALSE}
 sample_data <- read_csv("sample_scraped_rental.csv")
-sample_data
+glimpse(sample_data)
 ```
 
-Let's explore each column one after another.
+## Data cleaning
+Let's explore each column one after another and clean it.
 
+### Location column
 The first column is the address of the rental good.
 First. we check if we have any NA row in the column.
 ```{r}
@@ -195,8 +199,10 @@ appartments_df %>%
   select(location) %>%
   filter(is.na(location) == TRUE)
 ```
+As expected, all the locations have some data inside. For now, we do not check the quality of such data, just if everything has something or not.
 
-Now we can focus on the price row.
+### Price column
+Now we can focus on the price column.
 Prices are discrete data and should be seen as numerics.
 ```{r}
 appartments_df <- appartments_df %>%
@@ -205,15 +211,16 @@ appartments_df <- appartments_df %>%
 appartments_df %>%
   head(5)
 ```
-While checking the appartments_df, it seems that the price column is still a character column, not numeric.
+While checking the appartments_df, it seems that the price column is still a character column, not numeric. It means that not all rows have digits on them, but some may have other characters.
 
 A quick check like the one below show us that some prices are, in fact not numbers.
 ```{r}
 appartments_df %>%
   filter(str_detect(price, '\\D'))
 ```
-This mean, we have to accept that and keep it in mind if we try to compare prices by removing these rows.
+These non numeric rows are a problem in the coherence of our data. It means that, if we need to do any calculation, we will need to remove these column to get only numbers.
 
+### Currency column
 Now let's focus on the currency column.
 As we see the data is displayed in a strange way (\n\t \t\t\n\t \t\t1900 CHF\n \t\t)
 ```{r}
@@ -230,8 +237,10 @@ appartments_df <- appartments_df %>%
 
 appartments_df
 ```
+This column was easy to clean as it was to deal with the characters inside the string.
 
-We also need to change the florr column. For now we only have a number, but in the sample csv file, we see that it is a awaiting for a string.
+### Floor column
+We also need to change the floor column. For now we only have a number, but in the sample csv file, we see that it is a awaiting for a string.
 Instead of 4, I should see 4. Floor.
 ```{r}
 appartments_df <- appartments_df %>%
@@ -242,6 +251,7 @@ appartments_df <- appartments_df %>%
 appartments_df
 ```
 
+### Availability column
 Finally, we can take care of the last column that is not made of strings.
 First we only tried to change the strings to date with the as.Date function and the correct format.
 We got an error and then returned to inspect the column.
@@ -265,7 +275,7 @@ appartments_df
 Finally, the table looks like the sample.
 An important note here is on the datatype of each column. In fact, each column is a string because there is always a value that impeach the column to be another data type.
 
-To finalise the cleaning, let's check the ranges of the numerical variables. Even if we said right before there is no numeric variable, we can consider price, rooms and superficy as numerical variables, after some changes.
+To finalise the cleaning, let's check the ranges of the numerical variables. Even if we said right before there is no numeric variable, we can consider price, rooms and area as numerical variables, after some changes.
 
 First, let's get the range of prices:
 ```{r}
@@ -288,7 +298,7 @@ appartments_df %>%
   summarise(min_col =min(living_space),max_col =max(living_space))
 ```
 
-The 1 $m^2$ surprised me, so I checked the data:
+The 1 $m^2$ surprised us, so we checked the data:
 ```{r}
 appartments_df %>%
   filter(living_space == "1 m2")
@@ -297,7 +307,7 @@ We also found it in the UI:
 <center>
 ![The 1m2 appartment](1m_appart.png){width=50%}
 </center>
-This is an anomaly in the data and should be filterred out during the analysis of the data.
+This is an anomaly in the data and should be filtered out during the analysis of the data.
 
 Finally, we can also explore the range of rooms.
 ```{r}
@@ -308,14 +318,14 @@ appartments_df %>%
   summarise(min_col = min(rooms), max_col = max(rooms))
 ```
 So, we have items from 1 room to 13 rooms.
-In the opposite of the superficy, it is very likely the Real Estate company suggest 1 room appartments, like studios.
+In the opposite of the area, it is very likely the Real Estate company suggest 1 room apartments, like studios.
 We cannot deduct anything from these min/max, only we can be prepared to see a big diversity in the data from a studio to a big family house.
 
 # Exploration
 
 ## Price vs Living space
-The first question is about price over superficy.
-Let's build a scatter plot that shows the relation between superficy and price.
+The first question to ask ourselves while looking for an apartment is about the price over the area.
+Let's build a scatter plot that shows the relation between these two numeric values.
 
 ```{r}
 appartments_df_with_int <- appartments_df %>%
@@ -346,28 +356,25 @@ appartments_df_with_int %>%
   geom_smooth(method=lm, se=FALSE) +
   labs(title="Relationship between prices and living space",
        caption="Data from https://epfl-exts.github.io/rental-scrape",
-       x="Superficy in m2", 
+       x="Area in m2", 
        y="Price in CHF",
        color = "Type of object")
 ```
-We added to the plot colors to get the type of object to rent, and a regression line to show the correlation between the superficy and the price. 
 
-About the colors, we chose to show the 5 most relevant object, the black dots are all the other kind of objects.
-
-We can see that there is a positive relationship between living space and prices. I means that more living space is given and more expensive the rental is.
-
+We added to the plot colours to get the type of object to rent, and a regression line to show the correlation between the area and the price. 
+About the colours, we chose to show the 5 most relevant objects type, the black dots are all the other kind of objects. We made this choice to avoid too much noise.
+We can see that there is a positive relationship between the living space and prices. It means that more living space is given and more expensive the rental is.
 The relationship is quiet linear, we have a few exceptions, like the 1$m^2$ which costs 2180 and is easily visible.
 
 We also can see a small dispersion in the most common data (between ~>10$m^2$ to ~120$m^2$), then it seems to be way more dispersed. there is also less data after 200$m^2$.
-
 We can arrive to such a conclusion that, indeed, there is a big probability that bigger the living space, more expensive it is, but this rule seems to be less rigid in bigger spaces (more than 200$m^2$).
-
 Adding a third variable as the type of object, we can also see that the Hobby room objects are smaller (even if one is bigger than studios and apartments) and they are way cheaper than the other objects, which may influence the regression line.
 
 Finally, we see that the biggest item is also the most expensive, which confirms the trend analysis we do. We can also be surprised to see that the most expensive item is not a villa or an individual house, but an apartment.
 
 ## Properties by postcode
-Now we have the cost per superficy, it would also be interesting to see where the agency is the most present.
+The second question about Real Estate items is the location.
+Now that we an idea of the price per surface area, we can also get an insight of the presence of the agency.
 Let's build now a bar plot showing the number of properties by postcode.
 ```{r fig.height=10}
 appartments_df %>%
@@ -389,11 +396,14 @@ appartments_df %>%
     y="Number of properties"
     )
 ```
+
 We can see that the agency is more active in the area of 1206 and 1205.
-These are two residential district in Geneva. These district, at least the 1206 are known to be high-class districts.
+These are two residential district in Geneva. These district are known to be high-class districts.
+1205 Genève is known as Plainpalais, it's a district close to the centre of Geneva and known for his cultural activity.
+1206 Genève, is known as Champel, it's a very high-class and luxurious district.
 
 Now we see that some districts are well represented.
-Let's draw a plot separating the different districts.
+Let's have a plot that shows the prices per area, separated per districts.
 
 ```{r}
 price_sur_loc_fl <- appartments_df %>%
@@ -421,15 +431,17 @@ price_sur_loc_fl %>%
     title="Price of flats over living space",
     subtitle = "Separated by postal code using facets and color for floors",
     caption="Data from https://epfl-exts.github.io/rental-scrape",
-    x="Superficy in m2",
+    x="Area in m2",
     y="Price in CHF",
     color = "Floor"
     )
 ```
-For this plot, we made a choice, we wanted to show only the districts with more than 10 items.
-This permits to first see that some districts have some limited offers, and it seems that the price range also depends of the district. If we take the district 1205 for example, we see that the superficy does not exceeds 150$m^2$. We can also see that the district 1206, which is the most represented has a wide variety of apartments and it seems distributed in the diagonal of perfect correlation between superficy and price.
 
-We can also switch the color with the facets.
+For this plot, we made a choice, we wanted to show only the districts with more than 10 items, to make the plot more visible.
+We see that all the districts follow the same logic, bigger the area, more expensive the item.Nonetheless, the district 1204 and 1218 seem to flatten at 200$m^2$. Also, comparatively, it seems that the district 1233 has a more horizontal dispersion, meaning the prices grown less accordingly to the surface area.
+To continue the analysis, we see that the district 1205, for example, no area exceeds 150$m^2$. We can also see that the district 1206, which is the most represented has a wide variety of apartments and it seems distributed in the diagonal of perfect correlation between area and price.
+
+We can also switch the colour with the facets.
 ```{r}
 price_sur_loc_fl %>%
   ggplot(mapping = aes(x = living_space,
@@ -441,13 +453,17 @@ price_sur_loc_fl %>%
     title="Price of flats over living space",
     subtitle = "Separated by floor using facets and color for district",
     caption="Data from https://epfl-exts.github.io/rental-scrape",
-    x="Superficy in m2",
+    x="Area in m2",
     y="Price in CHF",
     color = "District"
     )
 ```
 
-Having a grid by floor permits to see that they also follow the same diagonal, bigger the superficy, bigger the price.
+Having a grid by floor permits to see that they also follow the same diagonal, bigger the area, bigger the price. This plot is a bit more complicate to interpret as there is a wide range of colours and it seems difficult to get any kind of conclusion.
+The two only insights we can give are the following: 
+
+* It seems that the price of first and fourth floor apartments tend to flatten at 200$m^2$.
+* The data for the third floor is difficult to analyse as there are items from district 1201 and 1202 that are way more expensive than the others.
 
 ```{r echo=FALSE}
 mean_expensive <- price_sur_loc_fl %>%
@@ -456,15 +472,21 @@ mean_expensive <- price_sur_loc_fl %>%
   distinct(code, .keep_all = TRUE) %>%
   arrange(mean_exp)
 ```
-The least expensive postal code according to the meaning of all the data we have is `r mean_expensive%>%arrange(mean_exp)%>%head(1)%>%select(code)` with a mean price of `r mean_expensive%>%arrange(mean_exp)%>%head(1)%>%select(mean_exp)` CHF.
+The least expensive postal code according to the meaning of all the data we have is `r mean_expensive%>%arrange(mean_exp)%>%head(1)%>%select(code)%>%magrittr::extract2("code")` with a mean price of `r mean_expensive%>%arrange(mean_exp)%>%head(1)%>%select(mean_exp)%>%mutate(mean_exp=as.character(mean_exp))%>%magrittr::extract2("mean_exp")`CHF.
 
-The most expensive postal code according to the meaning of all the data we have is `r mean_expensive%>%arrange(desc(mean_exp))%>%head(1)%>%select(code)` with a mean price of `r mean_expensive%>%arrange(desc(mean_exp))%>%head(1)%>%select(mean_exp)` CHF.
+The most expensive postal code according to the meaning of all the data we have is `r mean_expensive%>%arrange(desc(mean_exp))%>%head(1)%>%select(code)%>%magrittr::extract2("code")` with a mean price of `r mean_expensive%>%arrange(desc(mean_exp))%>%head(1)%>%select(mean_exp)%>%mutate(mean_exp=as.character(mean_exp))%>%magrittr::extract2("mean_exp")` CHF.
 
 # Analysis
 
 ## Visible addresses vs addresses on demand
 We explored the data, and got some conclusions. Now we will do some analysis in the data.
-Our analysis will focus on two types of addresses, indeed some addresses are name and can be easily find on a map, other are on request. Note that the website represents English and French data, so we will need to search for addresses on request, and <i>sur demande</i>.
+Our analysis will focus on two types of addresses display.
+
+* <i>available</i> addresses
+* <i>on request</i> addresses
+
+The available addresses represent the addresses that are directly shown in the data. It is easy to put them on map.
+The <i>on request</i> addresses only permit us to know the district, but not more. Note that the website represents English and French data, so we will need to search for addresses on request, and <i>sur demande</i>.
 
 
 ```{r}
@@ -489,12 +511,8 @@ on_demand_address <- appartments_df %>%
 
 ```
 
-Let's see if we can see any trends for listings with addresses only available on demand.
+Our interest focuses on price. Is there a price difference between <i>available</i> addresses and <i>on request</i> addresses ?
 
-
-To answer this question, we first need to create a variable where we are able to easily segregate on demand addresses from the ones not on demand.
-
-Once we have the variable, we can draw the first plot which shows a different distribution between these 2 variables.
 ```{r}
 on_demand_address %>%
   ggplot(aes(x=on_request, y=price)) +
@@ -510,15 +528,15 @@ on_demand_address %>%
   stat_summary(fun="mean", colour = "red", size = 0.25)
 ```
 
-The 2 plots are very different. Let's analyse them one by one, then conclude.
+The 2 violin are pretty different. Let's analyse them one by one, then conclude.
+
 Both plots represent a distribution of items based on their price and if their address is available on the agency website or not.
 
-
-The first plot represents the <i>available addresses</i>. We see that the median and the mean values are quite close, as the big majority of prices are a bit under 2500 CHF.
+The first plot represents the <i>available</i> addresses. We see that the median and the mean values are quite close, as the big majority of prices are a bit under 2500 CHF.
 If the mean is not superposed to the median it is mostly because of some extreme values that make the mean bigger than the median.
-Spreaking about extreme values, if we compare these with the <i>on request addresses</i>, we see that they are less present, but bigger.
+Speaking about extreme values, if we compare these with the <i>on request</i> addresses, we see that they are less present, but bigger.
 
-The second plot represents <i>on request addresses</i>
+The second plot represents <i>on request</i> addresses.
 The mean and the median are very close, but not totally superposed. This means that the distribution is better distributed around the mean, but not totally. In fact, some extreme values make the mean bigger than the median.
 
 We can conclude that if we search to rent an item, we have bigger chances to get a cheaper one if looking only at available addresses, but that the prices are more similar in the unshown addresses.
@@ -537,20 +555,21 @@ on_demand_address %>%
     caption="The red dot represents the mean value.
     Data from https://epfl-exts.github.io/rental-scrape",
     x="Status of the address",
-    y="Superficy"
+    y="area"
     )+
   stat_summary(fun="mean", colour = "red", size = 0.25)
 ```
-The 2 plots are very different. Let's analyse them one by one, then conclude.
 
-The first plot represents the distribution of available apartments based on their superficy.
+Again, the 2 violin charts are very different. Let's analyse them one by one, then conclude.
+
+The first plot represents the distribution of available apartments based on their area.
 We see that the median is close to 100$m^2$ with a majority of apartments a bit below this value.
-In the opposite, the mean value is higher, as there are some extreme values with more than 500$m^2$ of superficy.
+In the opposite, the mean value is higher, as there are some extreme values with more than 500$m^2$ of area.
 
 The second violin plot shows the distribution of <i> on request </i> addresses.
 The median and the mean re superposed, which means that the data is equally distributed around it mean. In fact, we see that the majority of items is at mean / average value.
 Also, the mean / median value are closer to 200$m^2$ than 100$m^2$.
-The maximum values are also less extreme than the ones at the <i>available addresses </i>
+The maximum values are also less extreme than the ones at the <i>available</i> addresses.
 
 To conclude we can deduct that we have more chances to have a bigger item if we go to one without its addresses showed in the agency website.
 
@@ -570,10 +589,17 @@ on_demand_address_stats <- on_demand_address %>%
   )
 ```
 
+```{r}
+on_demand_address_stats
+```
 Let's analyse this table column by column. First, the group size column is already interesting. It shows that 25% of the overall data has no location, but has to be requested. 
+
 Then, if we compare both medians, we see that the numbers are very close. It means that for both there are 50% of locations cheaper than 33CHF/$m^2$ and 50% of location more expensive. 
+
 The "average" column precises the distinction between the <i>on request</i> and the available addresses. In fact, the average of price per $m^2$ for the on request location is very close from the median which permits to already predict a small distribution. On the opposite, the bigger average in the available addresses shows that an extreme value is pushing the numbers up.
-This distribution difference is even better pictured by the standard deviation column. In fact, closer the standard deviation is from 0 and smaller the distribution is. We see that the standard deviation with a value of 110 shows a big dispersion of the data. We also need to recall that the <i> available addresses <i> are represented 3 times more, than the <i>on request </i>.
+
+This distribution difference is even better pictured by the standard deviation column. In fact, closer the standard deviation is from 0 and smaller the distribution is. We see that the standard deviation with a value of 110 shows a big dispersion of the data. We also need to recall that the <i>available addresses</i> are represented 3 times more, than the <i>on request</i>.
+
 Finally, the minimal and maximal value kind of confirm our assumptions. We see that the maximum value in the on demand locations is ~ 4 times bigger than the minimum, but that there should not be a  lot of these values. On the opposite, in the available locations row, we that the minimum and maximum are very different and we can expect a dataset with a big spread.
 
 We can also show this data in a histogram chart.
@@ -589,10 +615,12 @@ on_demand_address %>%
   )
 
 ```
-We are happy to get a shape close to the Bayesian bell, which means the data is well enough distributed.
 
+We are happy to get a shape close to the Bayesian bell, which means the data is well enough distributed inside each group. But, if we compare the groups, we have the confirmation that there are a lot more <i>available</i> addresses than <i>on request</i>.
 
-We can suggest the following null hypothesis: Both on request and available locations have the same price/$m^2$ mean. Here is the t-test
+To challenge this dsitribution, we can go for a null hypothesis where the question would be: Both on request and available locations have the same mean price/$m^2$.
+
+Here is the t-test
 ```{r}
 t_test_pm <-  on_demand_address %>%
   t_test(price_per_square_meter ~ on_request,
@@ -600,9 +628,15 @@ t_test_pm <-  on_demand_address %>%
 
 t_test_pm
 ```
-What we see is that 95% of the population will fall between +5% and -17% of the standard deviation. The p-value is 0.28, which means we have 28% of risk that the null theory is correct, which means that the mean between <i>on request</i> and </i>available addresses</i> would be the same.
 
-Let's do the same with the variable price.
+Let's analyse it column by column.
+
+The first column, called statistic is the measure of the difference between the two means. Here the statistic is very small, which means the two means are very close.
+
+The p_value indicates the probability of observing the data under the null hypothesis. Here, the null hypothesis is 0.98, which is quite high. It means that there is insufficient evidence to reject the null hypothesis.
+
+Let's do the same with the variable price only.
+Here, the null hypothesis would be: Both <i>available</i> addresses and <i>on request</i> addresses have the same mean price.
 ```{r}
 on_demand_address %>%
   group_by(on_request) %>%
@@ -617,8 +651,6 @@ on_demand_address %>%
 ```
 We already saw the difference between the median and the average on part 5. This table only confirms this. On average, the on request addresses are more expensive. We also see that both have huge standard deviation, which means that the data is spear far from the median. We have such confirmation by seeing both minimum and maximum data.
 
-
-We can suggest a null hypothesis like: Both on request and available locations have a mean price.
 ```{r}
 t_test_p <-  on_demand_address %>%
   t_test(price ~ on_request,
@@ -626,15 +658,11 @@ t_test_p <-  on_demand_address %>%
 
 t_test_p
 ```
-We see that the null hypothesis is not negate by the data.
 
+Let's analyse some columns.
+The statistic column shows a difference between the means of the two groups. This difference is higher than the preivous one. It means that the difference between the mean of the price of the two groups is higher than the difference between the means of the price per square meter.
 
-Compare the results of the analysis carried on the *price per square-meter* with those for the *price variables*.
-Are there differences between the results?
-Write down your interpretation and a general conclusion.
-
-What we see is that the prices are very likely to be the same in "on request" and "available" location. But, the price per $m^2$ are more likely to be different. But, if we compare both median and means, it seems that on request addresses have a better price per $m^2$, which means that they are bigger for the same value.
-We can also see that available addresses have extreme numbers in both minimum and maximum. This may show a need to name bix and expensive items, or smaller ones, so the customer would not be surprised. In the other side, the "on demand" ones have a more similar shape, which may mean that they are flats from particular who do not want to disclose their address everywhere. Price per $m^2$, raw price and the code may be enough to locate the on request addresses.
+Most important, the p_value here is close to 0, which means there is a strong evidence against the null hypothesis.
 
 ## Mapping the some addresses
 Finally, we will convert a subset of addresses and put it in a map.
@@ -662,8 +690,9 @@ geo_localisation %>%
 ```
 
 # Conclusion
-This report shows a real way to analyse a real estate website.
-We can compare prices, locations and superficy and display it in meaningful plots.
+In this report, we went through the process of accessing, cleaning, exploring, and analysing real estate data obtained from a fake real estate website. We started by scraping the data from the website and then cleaned it to prepare it for analysis. During the exploration phase, we visualized the relationships between different variables such as price and living space, and we also examined the distribution of properties across postal codes.
+
+Overall, this report provides valuable insights into the real estate market based on the data obtained from the website. It demonstrates the importance of thorough data cleaning and exploration before conducting any analysis, and it highlights the potential differences in property prices based on address availability.
 
 # Sources
 ## Help for coding
@@ -672,7 +701,9 @@ http://www.sthda.com/english/wiki/ggplot2-scatter-plots-quick-start-guide-r-soft
 http://www.sthda.com/english/wiki/ggplot2-violin-plot-quick-start-guide-r-software-and-data-visualization
 http://www.sthda.com/english/wiki/ggplot2-histogram-plot-quick-start-guide-r-software-and-data-visualization
 https://www.wallstreetmojo.com/regression-line/
+https://stackoverflow.com/questions/50995267/extract-value-from-tibble-in-r-markdown-inline-code
 
 
 ## Help for analysis
 https://fr.wikipedia.org/wiki/Champel
+https://fr.wikipedia.org/wiki/Plainpalais
