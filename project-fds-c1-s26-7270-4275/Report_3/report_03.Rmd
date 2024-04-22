@@ -1,0 +1,431 @@
+---
+title: "FDS Final Project: Report #3"
+author: "Daniel Escoval"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    df_print: paged
+    code_fold: hide
+    toc: true
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+# Introduction
+Let's analyse the Movie DB and train to work on APIs.
+This report will focus on data exctraction and qui analysis we can get with API calls.
+
+# The Data
+The data comes from the https://www.themoviedb.org/.
+
+They describe themselves as:
+<blockquote>
+The Movie Database (TMDB) is a community built movie and TV database. Every piece of data has been added by our amazing community dating back to 2008. TMDB's strong international focus and breadth of data is largely unmatched and something we're incredibly proud of. Put simply, we live and breathe community and that's precisely what makes us different.
+</blockquote>
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(httr)
+library(dplyr)
+library(stringr)
+library(purrr)
+library(tibble)
+library(jsonlite)
+library(ggplot2)
+library(infer)
+library(magrittr)
+```
+
+# Analysis
+
+## First tries with the API call
+
+To test the API, we can answer to this question: "What are the highest-grossing dramas from 2010?" 
+
+We can find the documentation here: https://developer.themoviedb.org/reference/intro/getting-started and my more personnal data here: https://www.themoviedb.org/settings/api.
+
+The first thing to do is to find the ID of the drama genre.
+```{r echo=FALSE}
+api_key <- "542bbd1017487a29348fcc6df0e39e66"
+
+genres_url <- httr::GET(stringr::str_glue("https://api.themoviedb.org/3/genre/movie/list?\\
+                        api_key={api_key}"))
+genres_parsed <- httr::content(genres_url, as = "parsed")
+
+list_genres <- matrix(unlist(genres_parsed[[1]]),ncol=2,byrow=TRUE)
+
+drama_id <- 18
+```
+
+The id for the drama genre is: `r drama_id`.
+
+With this id, we can query all the movies and, directly in the API call, filter by year.
+```{r}
+list_drama_movies_2010_get <- httr::GET(stringr::str_glue("https://api.themoviedb.org/3/discover/movie?\\
+                                                          include_adult=false&\\
+                                                          include_video=false&\\
+                                                          language=fr-ch&\\
+                                                          page=1&\\
+                                                          sort_by=popularity.desc&\\
+                                                          with_genres=18&\\
+                                                          year=2010&\\
+                                                          api_key={api_key}"))
+
+list_drama_movies_2010 <- httr::content(list_drama_movies_2010_get, as = "parsed")
+
+drama_movies_2010 <- tibble()
+drama_movies_2010 <- drama_movies_2010 %>%
+  mutate(original_title = "NA") %>%
+  mutate(french_title = "NA") %>%
+  mutate(popularity = "NA")
+
+#Loop through the result to get only the titles of the movies.
+for(movie in list_drama_movies_2010){
+  if(typeof(movie)=="list"){
+    for(characteristic in movie){
+      data <- list(
+        original_title = characteristic$original_title,
+        french_title = characteristic$title
+      )
+      drama_movies_2010 <- add_row(drama_movies_2010, !!!data)
+    }
+  }
+}
+
+drama_movies_2010
+```
+
+The tibble shows us the 20 movies with the genre drama that were released in 2010.
+We already sort the data, so the highest title is the title of the movie with the biggest popularity in 2010.
+
+
+Second question: "Have Will Ferrell and Liam Neeson ever been in a movie together?"
+
+First, we need to get actors IDs.
+We also suggest to take advantage of this query to get all the needed actors for this project and save them in a tibble.
+```{r}
+actors <- c("Will%20Ferrell", "Liam%20Neeson", "Tom%20Cruise")
+
+actors_id_tb <- tibble()
+actors_id_tb <- actors_id_tb %>%
+  mutate(actor_name = "NA") %>%
+  mutate(id = "NA")
+
+get_actor_id <- function(url) {
+  int_var <- GET(url) %>%
+    content(as = "parsed")
+  
+  for(actor in int_var){
+    if(typeof(actor)=="list"){
+      for(characteristics in actor){
+        if(typeof(characteristics) == "list"){
+          print(actors_id_tb)
+          data <- list(
+            actor_name = characteristics$name,
+            id = as.character(characteristics$id)
+          )
+          actors_id_tb <- add_row(actors_id_tb, !!!data)
+          return( paste(characteristics$name, "ID is", characteristics$id))
+        }
+      }
+    }
+  }
+}
+
+str_glue("https://api.themoviedb.org/3/search/person?\\
+         query={actors}&\\
+         include_adult=false&\\
+         language=fr-CH&\\
+         page=1&\\
+         api_key={api_key}")%>%
+  map(get_actor_id)
+
+```
+Now I have both IDs, I can search for the films they have in common.
+```{r}
+movie_discover_url = "https://api.themoviedb.org/3/discover/movie"
+adulte_false_default = "include_adult=false"
+
+join_movies_with_2_actors <- tibble()
+join_movies_with_2_actors <- join_movies_with_2_actors %>%
+  mutate(original_title = "NA") %>%
+  mutate(french_title = "NA")
+
+
+get_movie <- function(url) {
+  int_var <- GET(url) %>%
+    content(as = "parsed")
+  
+  for(movie in int_var){
+    if(typeof(movie)=="list"){
+      for(characteristics in movie){
+        if(typeof(characteristics) == "list"){
+          data <- list(
+            original_title = characteristics$original_title,
+            french_title = characteristics$title
+          )
+          join_movies_with_2_actors <- add_row(join_movies_with_2_actors, !!!data)
+        }
+      }
+    }
+  }
+  return(join_movies_with_2_actors)
+}
+
+data_movie <- str_glue("{movie_discover_url}?\\
+                       {adulte_false_default}&\\
+                       include_video=false&\\
+                       language=fr-CH&page=1&\\
+                       sort_by=popularity.desc&\\
+                       with_cast=3896%2C23659&\\
+                       api_key={api_key}") %>%
+  map(get_movie)
+
+data_movie
+```
+We see that Will Ferell and Liam Neeson were present in the movies in the tibble above.
+
+The last exercise is a combination of the two previous ones.
+
+We want to know if Tom Cruise already played in a kid's movie.
+
+First note, that there is no kid's movie genre, but we will agree for this work that "kid's movie" is a "familial" movie genre.
+
+```{r}
+movie_discover_url = "https://api.themoviedb.org/3/discover/movie"
+adulte_false_default = "include_adult=false"
+
+kids_movies_tom_cruise <- tibble()
+kids_movies_tom_cruise <- kids_movies_tom_cruise %>%
+  mutate(original_title = "NA") %>%
+  mutate(french_title = "NA")
+
+
+get_movie_kids_tm_cruise <- function(url) {
+  int_var <- GET(url) %>%
+    content(as = "parsed")
+  
+  for(movie in int_var){
+    if(typeof(movie)=="list"){
+      for(characteristics in movie){
+        if(typeof(characteristics) == "list"){
+          data <- list(
+            original_title = characteristics$original_title,
+            french_title = characteristics$title
+          )
+          kids_movies_tom_cruise <- add_row(kids_movies_tom_cruise, !!!data)
+        }
+      }
+    }
+  }
+  return(kids_movies_tom_cruise)
+}
+
+data_movie_kids_tom_cruise <- str_glue("{movie_discover_url}?\\
+                                       {adulte_false_default}&\\
+                                       include_video=false&\\
+                                       language=fr-CH&\\
+                                       page=1&sort_by=popularity.desc&\\
+                                       with_cast=500&\\
+                                       with_genres=10751&\\
+                                       api_key={api_key}") %>%
+  map(get_movie_kids_tm_cruise)
+
+data_movie_kids_tom_cruise
+```
+It seems that Tom Cruise never acted in a Family movie.
+
+## Disney and Pixar analysis
+
+Let's have the ID of the movie company: Pixar.
+```{r echo=FALSE}
+pixar_id <- str_glue("https://api.themoviedb.org/3/search/company?query=Pixar&\\
+                     page=1&\\
+                     api_key={api_key}") %>%
+  GET()%>%
+  content(as = "parsed")
+```
+Here is Pixar ID: `r pixar_id$results[[1]]$id`
+
+
+Now that we have the ID of Pixar, we should be able to find all the movies they have worked on. Write a query to get all the Pixar movies and sort them by descending revenue. The result will be given to you as a JSON (parsed to a `list` by `{httr}`). Convert this list to a `tibble` so you have one row per film and one column per interesting piece of information. Show the query and the tibble in your report.
+
+```{r warning=FALSE}
+number_pages <- c(1:7)
+
+get_movie <- function(url){
+  result <- GET(url) %>%
+    content(as = "parsed")
+  return(result$results)
+}
+
+pixar_search <- str_glue("https://api.themoviedb.org/3/discover/movie?\\
+                          include_adult=false&\\
+                          include_video=false&\\
+                          language=fr-CH&\\
+                          sort_by=popularity.desc&\\
+                          with_companies=3&\\
+                          api_key={api_key}&\\
+                          page={number_pages}") %>%
+  map(get_movie) %>%
+  purrr::flatten() %>%
+  map_df(magrittr::extract, c("id","original_title","title","vote_average","vote_count","release_date"))
+
+pixar_search
+```
+
+You may know that Pixar was acquired by Disney in 2006 after they had already been collaborating on films for more than a decade. For the last part of the report, we will look into whether this was a smart strategic decision by Disney by comparing the popularity of both Disney and Pixar films that came out from 2006 onwards.
+
+Let's first get Disney's ID:
+```{r}
+result_disney_id <- str_glue("https://api.themoviedb.org/3/search/company?\\
+                             query=Walt%20Disney%20Pictures&\\
+                             page=1&\\
+                             api_key={api_key}") %>%
+  GET()%>%
+  content(as = "parsed")
+
+for(company in result_disney_id$results){
+  if(company$name == "Walt Disney Pictures"){
+    disney_id <- company$id
+  }
+}
+```
+Here is Disney ID: `r disney_id`
+
+We already have a tibble with Pixar data, let's keep it.
+As we know, Disney has a lot of movies, so we will ask the API to get movies only from 2006 for the Disney data
+```{r warning=FALSE}
+number_pages <- c(1:26)
+
+disney_search <- str_glue("https://api.themoviedb.org/3/discover/movie?\\
+                          include_adult=false&\\
+                          include_video=false&\\
+                          language=fr-CH&\\
+                          sort_by=popularity.desc&\\
+                          with_companies=2&\\
+                          api_key={api_key}&\\
+                          page={number_pages}") %>%
+  map(get_movie) %>%
+  purrr::flatten() %>%
+  map_df(magrittr::extract, c("id","original_title","title","vote_average","vote_count", "release_date"))
+```
+
+Now we have our data for Disney movies and the one for Pixar movies.
+Let's now compare both tibbles.
+```{r}
+pixar_movies_from_2006 <- pixar_search %>%
+  mutate(release_date = as.Date(release_date)) %>%
+  filter(release_date > "2006-01-01") %>%
+  select(-release_date) %>%
+  mutate(company = "Pixar")
+
+disney_movies_from_2006 <- disney_search %>%
+  mutate(release_date = as.Date(release_date)) %>%
+  filter(release_date > "2006-01-01") %>%
+  select(-release_date) %>%
+  mutate(company = "Disney")
+
+comparison_tibble <- rbind(pixar_movies_from_2006, disney_movies_from_2006)
+comparison_tibble
+```
+Now we have a tibble with both data we can play with.
+
+```{r}
+comparison_tibble_clean <- comparison_tibble %>%
+  mutate(vote_count = as.numeric(vote_count)) %>%
+  mutate(vote_average = as.double(vote_average)) %>%
+  filter(vote_count > 50)
+
+comparison_tibble_clean %>%
+  ggplot(aes(x=company, y=vote_average)) +
+    geom_violin(fill="gray")+
+    geom_boxplot(width=0.1) +
+    labs(
+      title="Comparison between votations on Disney and Pixar movies.",
+      subtitle="Movies after 2006",
+      caption="The red dot represents the mean value.",
+      x="Company",
+      y="Vote average"
+      )+
+    stat_summary(fun="mean", colour = "red", size = 0.25)
+```
+We easily see the difference between Disney and Pixar movies. Let's not that the lowest value is still above 5.5 of popularity, so pretty high. The, we can see that the median of Disney movies are pretty high (more than 7.5). The third quartile (50% to 75% is less that 0.5 points, showing that these 25% of movies do have very similar popularity votes (can also see it with the violin chart.)) On Pixar's side, we see wider plots and a quite more rectangular shape of the violin plot which shows a big a linear dispersion.
+
+```{r}
+comparison_tibble_clean %>%
+  group_by(company) %>%
+  summarise(
+    group_size = n(),
+    median = median(vote_average),
+    average = mean(vote_average),
+    standard_deviation = sd(vote_average),
+    minimum = min(vote_average),
+    maximum = max(vote_average)
+  )
+```
+
+What we see first, it is that the Disney group is more than 3 times bigger than the Pixar one. 
+The maximum value for both is the same, but as we saw the standard deviation from Disney is very small. It is impossible to know exactly with this data that Disney did a good choice by acquiring Pixar, we should also test before 2006.
+
+### Conclusion of Disney - Pixar comparison
+```{r warning=FALSE}
+disney_before_2006 <- disney_search %>%
+  mutate(release_date = as.Date(release_date)) %>%
+  filter(release_date < "2006-01-01") %>%
+  select(-release_date) %>%
+  mutate(company = "Disney")
+
+pixar_movies_before_2006 <- pixar_search %>%
+  mutate(release_date = as.Date(release_date)) %>%
+  filter(release_date < "2006-01-01") %>%
+  select(-release_date) %>%
+  mutate(company = "Pixar")
+
+comparison_tibble_before_2006 <- rbind(pixar_movies_before_2006, disney_before_2006)
+
+comparison_tibble_before_2006_clean <- comparison_tibble_before_2006 %>%
+  mutate(vote_count = as.numeric(vote_count)) %>%
+  mutate(vote_average = as.double(vote_average)) %>%
+  filter(vote_count > 50)
+
+comparison_tibble_before_2006_clean %>%
+  ggplot(aes(x=company, y=vote_average)) +
+    geom_violin(fill="gray")+
+    geom_boxplot(width=0.1) +
+    labs(
+      title="Comparison between votations on Disney and Pixar movies.",
+      subtitle="Movies before 2006",
+      caption="The red dot represents the mean value.",
+      x="Company",
+      y="Vote average"
+      )+
+    stat_summary(fun="mean", colour = "red", size = 0.25)
+```
+```{r}
+comparison_tibble_clean %>%
+  group_by(company) %>%
+  summarise(
+    group_size = n(),
+    median = median(vote_average),
+    average = mean(vote_average),
+    standard_deviation = sd(vote_average),
+    minimum = min(vote_average),
+    maximum = max(vote_average)
+  )
+```
+The shapes are very similar, the median and average are a bit lower, same for the minimum, but the maximums are very similar.
+It seems that Disney did not really earn anything by acquiring Pixar. The minimal, average and mean popularity of the movies seemed to have grown, but we cannot tell it is because of the buying of Pixar.
+
+# Conclusion
+An API is a very powerful tool to get access to data.
+In this report, we saw that the acquisitionof Pixar by Disney seems not ahve conclude in a better quality of movies. The increase of votes seems to follow a certain curve and population aging.
+Also, we see that Pixar still has less movies that Disney, which maybe shows that Pixar tends to try to focus on quality and Disney in quantity. But these trends are not really visible.
+
+# Sources
+https://www.themoviedb.org/

@@ -1,0 +1,34 @@
+Row 348: If there is a way to have a padding between x legend when I do a coord_flip()
+
+410: I don't understand what's asked.
+
+515: 
+"""
+What is your conclusion, do the results of the test confirm your initial observations?
+
+**Warning:** Look closely at the table before carrying the test.
+Adjust anything in the data that could invalidate the results of the test and explain your reasoning.
+"""
+-> Check the data distribution
+I should have a more or less bell shapre data distribution
+
+
+
+Try to hide the code and focus on the interpretation.
+Show it as I would show it to a non technical
+
+We should be to flatten
+
+
+I should rely more on how to map functions
+
+
+
+Apply a glimpse on the data, so we have  summary on the data.
+
+Create a small table.
+
+check the Theme layer documentation
+I can make the bars less thin
+
+
