@@ -16,15 +16,6 @@ editor_options:
 knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 ```
 
-# Introduction
-
-This project will focus on a database from elected politicians in the canton of Zürich.
-The database is a `SQLite` database.
-The goal is to explore a "dirty" dataset with lots of NA values and maybe wrong values.
-Then, we will try to get meaningful analytics.
-
-As it is said in the instruction, the data is quite "messy", the main goal is to try to get the maximum from the database with as few modifications as possible.
-
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
 library(DBI)
 library(tibble)
@@ -43,8 +34,23 @@ library(leaflet)
 library(RSQLite)
 ```
 
+# Introduction
+
+This is the second report of the series of four reports. 
+
+In this report, we will take the data from an `SQLite` database.
+The database contains information about elected politicians in the canton of Zürich.
+The instructions indicate that the data is messy and the data cleaning work is important.
+After a first cleaning, we will analyse the dataset and get as most as possible from what he can give.
+Finally, we will display some addresses on a map.
+This report should be a good example of how to deal with dirty data, with columns not meaningful if let alone, NA values and indeed some wrong data.
+
+In this work, we will do our best to get meaningful analytics and. even if there is a cleaning work, we will try to return the data as close as possible from the database.
+
 # The data
-Let's first take a look at the data
+The first step was to browse a bit the SQLite database to have a first snapshot of the data.
+The exercise was quickly done and was not very interesting, so we will directly jump on its exploration through R script.
+
 ```{r echo=FALSE}
 # Connect to the database
 pol_zh_database <- dbConnect(RSQLite::SQLite(), "zh_politicians.db")
@@ -53,29 +59,92 @@ persons <- tbl(pol_zh_database, "PERSONS")
 mandates <- tbl(pol_zh_database, "MANDATES")
 addresses <- tbl(pol_zh_database, "ADDRESSES")
 affiliations <- tbl(pol_zh_database, "AFFILIATIONS")
+
 ```
 
-There are 4 databases: `r dbListTables(pol_zh_database)`
-As it is written in the instruction file, each table represent:
-
--   PERSONS: The elected persons (name, gender, year of birth, year of death...)
--   MANDATES: The mandates people have been elected for
--   ADDRESSES: The addresses of the elected persons
--   AFFILIATIONS: The affiliations to political organisations
-
-
-Let's have a first check through the glimpse function.
+The database is divided in 4 different tables, each table having their columns.
+We will now show a slimpse of each table and already have some comments about columns that need that.
 
 ```{r}
-glimpse(addresses)
-
-glimpse(affiliations)
-
-glimpse(mandates)
-
 glimpse(persons)
-
 ```
+
+* The table PERSONS
+  Each row represents a person
+  * ID: THe unique ID of a row
+  * LASTNAME
+  * FIRSTNAME
+  * TITLE: We should expect to see some NAs on this column.
+  * GENDER
+  * YEAR_OF_BIRTH
+  * YEAR_OF_DEATH: It is remarkable to note that this column may contain lots(?) of NA values.
+  * ACTIVITY: The activity is written in German. We won't use this column at all.
+
+```{r}
+glimpse(mandates)
+```
+
+* The table MANDATES
+  This table contains information about the mandates of the PERSONS.
+  Each row represents a mandate from its beginning to its end.
+  * ID
+  * PERSON_ID: It permits to link a mandate with a PERSON. We should expect a 1 to many relationship.
+  * ASSEMBLY
+  * MANDATE_START_DAY
+  * MANDATE_START_MONTH
+  * MANDATE_START_YEAR
+  * MANDATE_END_DAY
+  * MANDATE_END_MONTH
+  * MANDATE_END_YEAR
+  Note that we will need to transform the DAY - MONTH - YEAR columns to something more usable as a proper date.
+  
+```{r}
+glimpse(addresses)
+```
+* The table ADDRESSES
+  This table represents the addresses registered by the PERSONS, when they had a mandate on.
+  Each row is an address
+  * ID
+  * PERSON_ID: As for mandates, we should expect a 1 to many relationship.
+  * STREET
+  * HOUSE_NUMBER
+  * POSTAL_CODE
+  * CITY
+  * MANDATE_START_DAY
+  * MANDATE_START_MONTH
+  * MANDATE_START_YEAR
+  * MANDATE_END_DAY
+  * MANDATE_END_MONTH
+  * MANDATE_END_YEAR
+  Like for the MANDATES table, we will need to aggregate some columns together to have a more usable data.
+  Also, note that we might find a lot of NAs in the information about the address.
+  
+
+```{r}
+glimpse(affiliations)
+```
+* The table AFFILIATIONS
+  This table focuses on the party affiliation of each user.
+  This table is linked to a PERSON and to a MANDATE
+  We can expect a 1 to many relationship with PERSONS and a 1 to 1 with MANDATES.
+  * ID
+  * MANDATE_ID
+  * PERSON_ID
+  * PARTY
+  * AFFILIATION_START_DAY
+  * AFFILIATION_START_MONTH
+  * AFFILIATION_START_YEAR
+  * AFFILIATION_END_DAY
+  * AFFILIATION_END_MONTH
+  * AFFILIATION_END_YEAR
+
+Here is a suggestion of the data scheme built with dbdiagram.io
+
+<center>
+![Diagram sketch of the database](database_scheme.png){width=95%}
+
+</center>
+
 ## Data cleaning
 The first observations we have are the big number of int columns.
 They are here to separate days from months from years.The first cleaning task will be to transform these columns into dates.
@@ -216,7 +285,7 @@ persons_tibble_clean <- persons_tibble %>%
       year_of_death - year_of_birth)
   ) %>%
   filter(age_at_death < 120 | is.na(age_at_death)) %>%
-  filter(age_at_death > 20  | is.na(age_at_death)) %>%
+  filter(age_at_death > 18  | is.na(age_at_death)) %>%
   select(-c(
     year_of_death,
     year_of_birth
@@ -226,11 +295,12 @@ persons_tibble_clean <- persons_tibble %>%
   arrange(desc(age_at_death))
 
 glimpse(persons_tibble_clean)
-```
-```{r}
+
 # We disconnect from the DB.
 dbDisconnect(pol_zh_database)
 ```
+
+The data is now cleaner. We have proper dates and addresses columns.
 
 # Analysis
 
@@ -238,7 +308,7 @@ dbDisconnect(pol_zh_database)
 
 Now we have the 4 tibbles more or less cleaned. We can now explore the data.
 
-Let's see the evolution of the mandates.
+Let's first have a look on the evolution of the mandates.
 
 ```{r}
 mandates_tibble_clean %>%
@@ -267,7 +337,7 @@ Let's explain the plot and some choices made.
 First, we made the choice to clean a bit the tibble by removing the years were there were less than 15 members for the Cantonal Council and the Executive Council.
 This permits to have less peaks in the bottom and to be able to see the Executive Council and the Small Council lines.
 This plot permits to see when the institutional change from Grand and Small Council to Cantonal and Executive Council was made.
-It is also interesting to see that the rows are flatter at the end, maybe because the date is cleaner.
+It is also interesting to see that the rows are flatter at the end, maybe because the date is cleaner or less people has been elected over the years.
 
 Let's now explore the gender dispersion in the different councils.
 
@@ -297,9 +367,51 @@ person_mandates %>%
 ```
 
 We can see that no women were mandated in the Grand and Small Council.
-In 1900, at least 1 woman entered in the Cantonal Council.
-From the years 2000, more and more women entered in the Cantonal Council, being closer to the exact parity.
-Finally, we can see that the Executive Council became totally feminine a bit before the years 2000.
+In 1900, at least 1 woman entered in the Cantonal Council. This data is a bit strange as women got the right to vote in Zurich the 15th of November 1970.
+
+```{r}
+person_mandates %>%
+  mutate(year = format(as.Date(starting_date_mandate, format="%Y-%m-%d"),"%Y")) %>%
+  mutate(year = as.Date(year, format="%Y")) %>%
+  group_by(year, assembly, gender) %>%
+  reframe(
+    firstname,
+    lastname,
+    year,
+    group_size = n()
+    ) %>%
+  filter(gender == "w")
+```
+
+Indeed, it seems that the "woman" from 1899 is a man and the data has been wrongly entered.
+Let's correct it for the plot:
+```{r}
+person_mandates %>%
+  mutate(year = format(as.Date(starting_date_mandate, format="%Y-%m-%d"),"%Y")) %>%
+  mutate(year = as.Date(year, format="%Y")) %>%
+  group_by(year, assembly, gender) %>%
+  summarise(
+    group_size = n(),
+    ) %>%
+  mutate(
+    gender = ifelse(
+      gender=="w" & year < 1970,
+      "m",
+      gender)) %>%
+  ggplot(aes(x=year, y=group_size, group=gender)) +
+  geom_line(aes(color=gender)) +
+  facet_wrap(
+    vars(assembly),
+    scales = "free_x")+
+  labs(
+    title="Gender proportion in Zurich's Councils",
+    x="Year",
+    y="Number of mandates",
+    color = "Gender"
+  )
+```
+
+Now the data seems cleaner and we see that women are not well represented in politics, but their representation is growing enough to beat the 50% in the last years.
 
 ## Parties analysis
 
@@ -506,7 +618,7 @@ t_test_per_ti <-  persons__title_test %>%
 t_test_per_ti
 ```
 
-The p_value is very small, it indicates that the null hypothesis is very unlikely to be true.We also can see that the lower_ci shows that it is easier to identify the difference between both with or without title thant in the upper values.
+The p_value is very small, it indicates that the null hypothesis is very unlikely to be true. We also can see that the lower_ci shows that it is easier to identify the difference between both with or without title thant in the upper values.
 
 Let's now differentiate people born before and after 1918.
 
@@ -608,7 +720,7 @@ t_test_per_before_1918 %>%
 
 Let's then compare both t_tests.
 They are very different, but answer our question.
-We see that before 1918, we can reject the null hypothesis with a strong conviction, but after 1918, we can't because the p_value is greater than 0.5.
+We see that before 1918, we can reject the null hypothesis with a strong conviction, but after 1918, we can't because the p_value is greater than 0.5. We can state that the data does not permit to recuse the null hypothesis for data after 1918.
 
 ```{r}
 person_mandates %>%
@@ -779,7 +891,7 @@ We see that there are not a big number of changes.
 
 Finally, let's locate 20 of these politicians.
 
-```{r}
+```{r echo=FALSE}
 addresses_clean <-addresses_tibble %>%
   mutate(street = na_if(street, "")) %>%
   mutate(house_number = na_if(house_number, "")) %>%
@@ -827,6 +939,21 @@ geo_localisation %>%
              popup=~complete_address)
 ```
 
+# Conclusion
+In this report we embarked on a deep cleaning journey. The overview of the data was useful to understand its structure and be less scared by the number of int columns.
+
+This cleaning process was crucial to ensure the usability of the data.
+
+Our analysis did explore several aspects of the dataset, including the evolution of mandates over time, gender representation in councils, party composition, lifespan analysis of politicians, and identification of influential figures with multiple mandates.
+
+This report shows us historical data. We could talk about the power of such visualizations in gender equality over the years. But we prefer to have a step back and say "it is just data". To complete our exploration and understanding of what phenomenas we are facing. We would need the help of specialists to get more quality insights on what we see.
+Data sciences can show patterns, movements, nubmers, but, in this case, does not permit to fully udnerstand why we see that.
+The best example is that the data does not tell us the difference between the Cantonal Council and the Grand Council and what are the causes that made one disappear and the other appear. 
+
 # Sources
 ## Help for coding
 https://rdrr.io/r/base/chartr.html
+
+## Help for analysis
+https://dbdiagram.io/home
+https://fr.wikipedia.org/wiki/Suffrage_f%C3%A9minin_en_Suisse
