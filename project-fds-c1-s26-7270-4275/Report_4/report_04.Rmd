@@ -21,12 +21,15 @@ library(plotly)
 library(viridis)
 library(infer)
 library(stringr)
+library(magrittr)
 ```
 
 
 # Introduction
 
-In this report we will get some analysis about the Olympic Games and what data can tell us about the Olympic Games and their history.
+This report is the fourth, and the last of the series of four reports.
+On this report, we will analyse a pretty big dataset stored into an Excel sheet. The data is an historical report from the Olympic Games.
+Along this report, we will try to get some fact about the Games.
 
 # The data
 ```{r, echo=FALSE}
@@ -42,32 +45,78 @@ medals_tibble <- read_xlsx("olympics.xlsx", sheet = "medals") %>%
 
 The data is in a big Excel file with 4 sheets.
 
-* The first sheet focuses on athletes and their characteristics.
 ```{r} 
 glimpse(athletes_tibble)
 ```
 
-* The second sheet shows the NOCs (National Olympic Committees) who participated to an Event.
-  It means we should expect a lot of duplicates.
+The first sheet focuses on athletes and some of their characteristics.
+Each row represents an athlete.
+The columns are the following:
+
+* athlete_id
+* Name
+* Sex
+* Height
+* Weight
+
 ```{r}
 glimpse(countries_tibble)
 ```
 
-* The third sheet is also the smallest dataset focuses on the each Olympic Games characteristic.
+The second sheet shows the athletes who participated to events, but based on their NOC and the Games.
+If an athlete participated to two different Games, we should have two rows, one by Game.
+As we see, the difference between the number of rows of this tibble and the athletes one is 51'881 rows, which means we have this amount of at least duplicates.
+
+The columns are the following:
+* athlete_id
+* Age
+* NOC
+* Games
+
 ```{r}
 glimpse(games_tibble)
 ```
 
-* The fourth sheet focuses on who won a medal. This dataset is the biggest one as there is 1 row per athlete, per event per Games. It means if 4 individuals won a Gold medal during an event, them the country will earn 4 medals.
+The third sheet is also the smallest dataset focuses on the each Olympic Games characteristic.
+Each row represents a iteration of the Olympic Games.
+
+The columns are the following:
+* Games
+* Year
+* Season
+* City
+
 ```{r}
 glimpse(medals_tibble)
 ```
+The fourth sheet focuses on who won a medal. This dataset is the biggest one as there is 1 row per athlete, per event per Games. It means if 4 individuals won a Gold medal during an event, them the country will earn 4 medals.
+This row has a lot of duplicate athletes.
+
+The columns are the following:
+* athlete_id
+* Games
+* Team
+* Sport
+* Event
+* Medal
+
+We can transcribe the relationship of each tibble by the following graph:
+
+<center>
+![Excel sheets data scheme](olympic_db_scheme.png){width=95%}
+</center>
+
+The scheme shows us in a better way the relationship of each table. We have a 1 to many relationship between the athletes sheet and the country sheet. We have the same relationship type between the athletes sheet and the medals sheet.
+Both country sheet and medals sheet have a many to 1 relationship with the games sheet.
 
 ## Analysis
+Now we have a better overview of our data, we can focus on the analysis of the dataset.
 
-### Athletes analysis
+### Athletes country analysis
 
-Have some athletes competed for different countries over time?
+The first focus will be on athletes.
+As we saw a 1 to many relationship between athletes and country, we are in right position to ask if some athletes have competed for different countries over time?
+
 ```{r}
 #Join athletes and country table
 athletes_country <-  merge(x=athletes_tibble,y=countries_tibble, by="athlete_id")
@@ -90,13 +139,13 @@ filtered_athletes_country_numbers <- athletes_country_numbers %>%
 filtered_athletes_country_numbers
 
 ```
-Yes, `r filtered_athletes_country_numbers` athletes have competed for 2 or more countries.
+Yes, `r filtered_athletes_country_numbers%>%magrittr::extract2("more_1_country")` athletes have competed for 2 or more countries.
 
 We can find more details in the plot below:
 
 ```{r}
 athletes_country_numbers %>%
-  ggplot(aes(x = fct_reorder(as.character(nb_countries), nb_athletes_by_country), y = nb_athletes_by_country)) +
+  ggplot(aes(x = fct_reorder(as.character(nb_countries), format(nb_athletes_by_country, scientific=F)), y = nb_athletes_by_country)) +
   geom_col(width = 0.7) +
   coord_flip()+
   labs(
@@ -105,7 +154,27 @@ athletes_country_numbers %>%
     y="Number of athletes"
     )
 ```
-Indeed, we see that the massive number of athletes only competed for one country, but it can be interesting to zoom in the `r filtered_athletes_country_numbers` athletes who competed for more than one country.
+
+The plot is difficult to analyse. We see that a very large number of athletes only competed for 1 country, but some have comepter for 2 and a small number for 3 or 4 different countries.
+We recreated this plot, but by removing the scientific numerotation.
+
+```{r}
+athletes_country_numbers %>%
+  ggplot(aes(x = fct_reorder(as.character(nb_countries), nb_athletes_by_country), y = format(nb_athletes_by_country, scientific=F))) +
+  geom_col(width = 0.7) +
+  coord_flip()+
+  labs(
+    title="Number of athletes per number of coutries reprentation",
+    x="Number of coutries represented by the an athlete",
+    y="Number of athletes"
+    )
+```
+
+Now we can see all the rows, but their weight is not relative to each other any more. Even if the numbers are very precise, we see that 134001 athletes competed for 1 country, 1473 athletes competed for 2 countries, 92 athletes competed for 3 countries and 5 athletes competed for 4 countries, just looking at the bars does not give us such precision. In fact, only checking the bars seems to indicate that 2 times more athletes competed for 3 countries, compared to 4. But in reality, the bar of 4 countries should be 5% of the weight of the bar of 3 countries. This comparison of 2 plots show that even if the data shown by numbers is correct, we should always be careful with the visualisation. 
+
+As we see, the big majority of athletes represented 1 country (a bit less than 99%), it can be interesting to completely ignore them and to zoom in the `r filtered_athletes_country_numbers%>%magrittr::extract2("more_1_country")` athletes who competed for more than one country.
+We also decided to suggest another plot to show it.
+
 ```{r}
 p <-athletes_country_numbers %>%
   filter(nb_countries > 1) %>%
@@ -128,18 +197,20 @@ pp <- ggplotly(p, tooltip="text")
 pp
 ```
 
+#### Preliminar conclusion
 This is expected that athletes compete for more than one country for various reasons:
 
-* The athlete changed his country for personnal reasons.
-* The country does not exist any more (you can find here an example of countries that disappeared after World War 2: https://landgeist.com/2021/05/25/countries-that-ceased-to-exist-since-ww2/)
-* The country changed its name (https://www.jagranjosh.com/general-knowledge/countries-that-changed-their-names-1694008654-1)
-* Remember that we are not really talking about "countries" but about NOCs, in the case of Russia, after the Winter Games of 2018 in Pyeongchang, Russian athletes cannot represent Russia Barrymore, but ROC (Russian Olympic Committee).
+* The athlete changed his country for personal reasons.
+* The country does not exist any more (in the sources, we added a website with a list of countries that disappeared since World War 2).
+* The country changed its name (We also added in the sources a list of countries that changed their name).
+* Remember that we are not really talking about "countries" but about NOCs, in the case of Russia, after the Winter Games of 2018 in Pyeongchang, Russian athletes cannot represent Russia any more, but ROC (Russian Olympic Committee).
 * Also the IOC code for the NOC can change, a scenario that can also appear in our data.
-* The athlete competes for the EOR (European Reffugee Team)
+* The athlete competes for the EOR (European Refugee Team)
 
+#### Further details
 Let's take the example of the five athletes who represented 4 countries during the Olympic Games history:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 athletes_country %>%
   distinct(athlete_id, NOC, .keep_all = TRUE) %>%
   group_by(athlete_id) %>%
@@ -154,6 +225,7 @@ athletes_country %>%
 
 We can see that all of them were in at least a country that does not exist any more for their first Games.
 
+### Particiaptions to Games
 Now that we have the athletes and which country they represented, we can ask ourselves who are the ten athletes that took part in most games?
 
 ```{r}
@@ -170,12 +242,20 @@ It is difficult to give a top 10 as 9 athletes participated at 8 iterations of t
 This is not very surprising as he's an equestrian and equestrian athletes are the ones who can have the longest career. The 2 other athletes with 8 participations are a shooter and a sailor, who also have long careers. 
 
 Now we know who are the athletes who participated in most Games, let's see if they also are the ones who competed in the most events?
-If they are not in the top ten, who are in there?
-Also, did some athletes take part in more than one event during a game?
-
 ```{r}
 athletes_medals <-  merge(x=athletes_tibble,y=medals_tibble, by="athlete_id")
 
+athletes_medals %>%
+  group_by(athlete_id) %>%
+  reframe(events_per_games = n(), Name, Event) %>%
+  distinct(Name, .keep_all = TRUE) %>%
+  arrange(desc(events_per_games)) %>%
+  head(10)
+```
+The athlete who competed in the biggest number of events is Robert Tait McKenzie with 58 participations in total.
+
+We also check who is the athlete who participated in most event in only 1 Game.
+```{r}
 athletes_medals %>%
   group_by(athlete_id, Games) %>%
   reframe(events_per_games = n(), Name, Event) %>%
@@ -183,12 +263,14 @@ athletes_medals %>%
   arrange(desc(events_per_games)) %>%
   head(10)
 ```
-Acee Blue Eagle is the person who participated at the most events in our iteration of Olympic Games. It is interesting to see that they were all artists or shooters.
+Acee Blue Eagle is the person who participated at the most events in one iteration of Olympic Game.
+
+#### Preliminary conclusion
 
 ### Medals analysis
 Now let's focus on countries and how many medals they won.
 
-LEt's create a new table showing the number of medals per country (rows) and per year (column).
+Let's create a new table showing the number of medals per country (rows) and per year (column).
 Keep only the 15 countries with the most medals overall.
 
 ```{r}
@@ -268,7 +350,7 @@ Well, it seems that not winning a medal stays the norm. What we see is that USA 
 
 - Run a Chi Square test to test the null-hypothesis: "There is no relationship between country and whether they win a medal or not".
 
-```{r}
+```{r warning=FALSE}
 medals_per_athletes_nb %>%
   chisq_test(
     formula = Medal ~ NOC
@@ -279,7 +361,7 @@ It seems, indeed that there is a very strong association between winning a medal
 The p_value is 0, meaning that there is a strong evidence we can refuse the null hypothesis.
 
 ### Some sport analysis
-Create a scatterplot showing the average height versus the average weight of competitors per sport (one dot per sport).
+Create a scatter plot showing the average height versus the average weight of competitors per sport (one dot per sport).
 
 ```{r}
 sport_averages <- athletes_medals_countries %>%
@@ -345,7 +427,6 @@ sport_averages %>%
     )
 
 ```
-### Part 7
 
 Create a line plot showing the number of medals given by year (one line for Gold, one line for Silver and one line for Bronze).
 Does it change over time?
@@ -377,12 +458,33 @@ As Winter has historically less sports, it is normal to see less medals.
 I also was expecting to see the same number of Bronze, Silver and Gold medal, instead, we can see that the lines are never superposed, which means there is never the same number of Bronze, Silver and Gold medals distributed in an event.
 
 #Conclusion
-The Olympic Games evolved a lot during their history.They followed the world and its changes, with more or less countries, wwith different disciplines and so on.
+We see this last report like a door to more data analytics.
+
+The different questions guided us through a certain analysis.
+We discovered that some athletes have competed for more than one NOC.
+We also saw that some disciplines permit a longer career like equestrian, shooting and sailing.
+The last part of the study focused on countries and medals per country. We saw that USA are the dominant country, but it is not only helped by its history, but also by it's pool of athletes.
+
+This is just snapshot of the analytics we can do with such dataset.
+More ideas were coming to mind while doing the report, and also some cleaning or, at least, a normalization of the column events, or adding some more columns from open source information would help to see more trends about the Olympic Games history. We could add olympic records, scores, competition schedules, etc.
+We could have questions like: what is the sport with the oldest athletes ?
+Does a Game have a unique sport event in Games history ?
+What is the proportion of teamsport ?
+Should we keep artistic events in such analytics ?
+What about Munich 1972 ?
+
 
 # Sources
 ## Help for coding
 https://r-graph-gallery.com/bubble_chart_interactive_ggplotly.html
+https://edrub.in/ARE212/section06.html
 
 ## Help for analysis
+https://landgeist.com/2021/05/25/countries-that-ceased-to-exist-since-ww2/
+https://www.jagranjosh.com/general-knowledge/countries-that-changed-their-names-1694008654-1
+https://en.wikipedia.org/wiki/Doping_in_Russia
+https://olympics.com/ioc/refugee-olympic-team
 https://en.wikipedia.org/wiki/Ian_Millar
+https://fr.wikipedia.org/wiki/Robert_Tait_McKenzie
 https://en.wikipedia.org/wiki/Acee_Blue_Eagle
+
