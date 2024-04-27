@@ -16,19 +16,6 @@ editor_options:
 knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 ```
 
-# Introduction
-Let's analyse the Movie DB and train to work on APIs.
-This report will focus on data exctraction and qui analysis we can get with API calls.
-
-# The Data
-The data comes from the https://www.themoviedb.org/.
-
-They describe themselves as:
-<blockquote>
-The Movie Database (TMDB) is a community built movie and TV database. Every piece of data has been added by our amazing community dating back to 2008. TMDB's strong international focus and breadth of data is largely unmatched and something we're incredibly proud of. Put simply, we live and breathe community and that's precisely what makes us different.
-</blockquote>
-
-
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 library(httr)
 library(dplyr)
@@ -41,6 +28,27 @@ library(infer)
 library(magrittr)
 ```
 
+# Introduction
+This is the third report in the series of four reports.
+This report focus on data analytics using APIs.
+This report is a good opportunity to train on reading API documentation and getting the data in a meaningful way.
+
+This report will focus on movies analytics from the Move Database, a website that has as a mission to list all the movies created.
+
+They Movie Database describes itself as:
+
+<blockquote>
+The Movie Database (TMDB) is a community built movie and TV database. Every piece of data has been added by our amazing community dating back to 2008. TMDB's strong international focus and breadth of data is largely unmatched and something we're incredibly proud of. Put simply, we live and breathe community and that's precisely what makes us different.
+</blockquote>
+
+In this report we will extract information from their API and get some meaningful analytics.
+
+# The Data
+The data comes from the https://www.themoviedb.org/.
+As the data comes from API calls, we receive it as a JSON scheme. It means the data is not given to us as a table, not in a hierarchical way.
+
+We will mainly focus on the table `movies`, and use the other tables as helpers to make our data more understandable. In the beginning, we will play a bit with other tables to be in shape.
+
 # Analysis
 
 ## First tries with the API call
@@ -50,7 +58,7 @@ To test the API, we can answer to this question: "What are the highest-grossing 
 We can find the documentation here: https://developer.themoviedb.org/reference/intro/getting-started and my more personnal data here: https://www.themoviedb.org/settings/api.
 
 The first thing to do is to find the ID of the drama genre.
-```{r echo=FALSE}
+```{r}
 api_key <- "542bbd1017487a29348fcc6df0e39e66"
 
 genres_url <- httr::GET(stringr::str_glue("https://api.themoviedb.org/3/genre/movie/list?\\
@@ -103,7 +111,6 @@ drama_movies_2010
 The tibble shows us the 20 movies with the genre drama that were released in 2010.
 We already sort the data, so the highest title is the title of the movie with the biggest popularity in 2010.
 
-
 Second question: "Have Will Ferrell and Liam Neeson ever been in a movie together?"
 
 First, we need to get actors IDs.
@@ -124,7 +131,6 @@ get_actor_id <- function(url) {
     if(typeof(actor)=="list"){
       for(characteristics in actor){
         if(typeof(characteristics) == "list"){
-          print(actors_id_tb)
           data <- list(
             actor_name = characteristics$name,
             id = as.character(characteristics$id)
@@ -243,7 +249,7 @@ It seems that Tom Cruise never acted in a Family movie.
 ## Disney and Pixar analysis
 
 Let's have the ID of the movie company: Pixar.
-```{r echo=FALSE}
+```{r}
 pixar_id <- str_glue("https://api.themoviedb.org/3/search/company?query=Pixar&\\
                      page=1&\\
                      api_key={api_key}") %>%
@@ -421,11 +427,17 @@ comparison_tibble_clean %>%
 ```
 The shapes are very similar, the median and average are a bit lower, same for the minimum, but the maximums are very similar.
 It seems that Disney did not really earn anything by acquiring Pixar. The minimal, average and mean popularity of the movies seemed to have grown, but we cannot tell it is because of the buying of Pixar.
+We also can determine that Pixar movies are more likely to be popular than Disney movies. The aquisition of Pixar is more to get two times more movies in the cinemas than just one.
 
 # Conclusion
-An API is a very powerful tool to get access to data.
-In this report, we saw that the acquisitionof Pixar by Disney seems not ahve conclude in a better quality of movies. The increase of votes seems to follow a certain curve and population aging.
-Also, we see that Pixar still has less movies that Disney, which maybe shows that Pixar tends to try to focus on quality and Disney in quantity. But these trends are not really visible.
+In this project we went throught The Movie Database API.
+
+We then delved deeper into the analytics by examining movies produced by Pixar, a renowned animation studio, and comparing them to those produced by Disney. Utilizing the API to gather movie information, we conducted a comparative analysis of the popularity of Disney and Pixar films released from 2006 onwards. Our findings revealed interesting trends in audience reception and provided valuable insights into the strategic implications of Disney's acquisition of Pixar.
+
+With the spirit of always improving, we could also think about <i>caching</i> the data in to csv files. So we could avoid too many API calls. Also, we could think about a table before doing the APIs and then fill it to answer our questions.
 
 # Sources
+## Help for analysis
 https://www.themoviedb.org/
+https://www.lemondeinformatique.fr/actualites/lire-focus-sur-json-le-format-star-des-echanges-de-donnees-76951.html
+
